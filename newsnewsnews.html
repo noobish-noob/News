@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global News Tracker</title>
+    <!-- Load Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Configure Tailwind to use Inter font and apply rounded corners globally -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Custom scrollbar for desktop/tablet view */
+        .headline-list::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .headline-list::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1; /* slate-300 */
+            border-radius: 20px;
+        }
+
+        .headline-list::-webkit-scrollbar-track {
+            background: #f1f5f9; /* slate-100 */
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-4 sm:p-8 font-sans">
+
+    <!-- Main Container -->
+    <div class="max-w-4xl mx-auto">
+
+        <!-- Header -->
+        <header class="mb-8 p-4 bg-white shadow-xl rounded-xl">
+            <h1 class="text-3xl font-bold text-gray-800 text-center">Global News Tracker</h1>
+            <p class="text-center text-sm text-gray-500 mt-1">Trending Headlines from India, US, and the World</p>
+        </header>
+
+        <!-- Tab Navigation -->
+        <nav class="flex justify-center mb-6 bg-white p-2 rounded-xl shadow-lg">
+            <button id="tab-india" data-region="India"
+                    class="tab-button w-1/3 py-3 text-sm font-semibold text-white rounded-lg transition-all duration-300 shadow-md bg-indigo-600 hover:bg-indigo-700 mx-1">
+                🇮🇳 India
+            </button>
+            <button id="tab-us" data-region="US"
+                    class="tab-button w-1/3 py-3 text-sm font-semibold text-gray-600 rounded-lg transition-all duration-300 hover:bg-indigo-50 hover:text-indigo-600 mx-1">
+                🇺🇸 US
+            </button>
+            <button id="tab-world" data-region="World"
+                    class="tab-button w-1/3 py-3 text-sm font-semibold text-gray-600 rounded-lg transition-all duration-300 hover:bg-indigo-50 hover:text-indigo-600 mx-1">
+                🌍 World
+            </button>
+        </nav>
+
+        <!-- News Content Area -->
+        <div id="news-container" class="bg-white p-4 sm:p-6 rounded-xl shadow-2xl">
+            <div id="headline-list" class="headline-list space-y-4 max-h-[70vh] overflow-y-auto">
+                <!-- Headlines will be inserted here by JavaScript -->
+                <p class="text-center text-gray-500 py-10">Loading headlines...</p>
+            </div>
+        </div>
+
+        <!-- Footer / Data Source Information -->
+        <footer class="mt-8 text-center text-xs text-gray-400">
+            <p>Data based on current trending news headlines retrieved on November 11, 2025.</p>
+        </footer>
+    </div>
+
+    <script>
+        // News data categorized by region
+        const newsData = {
+            India: [
+                { headline: "Police invoke 'terror' law in Red Fort car explosion investigation; doctor among those arrested.", source: "The Hindu, India Today" },
+                { headline: "Air pollution emergency: Delhi schools shuttered as toxic smog blankets capital, sparking rare protests.", source: "CBS News, The Guardian" },
+                { headline: "Bihar Assembly election exit polls project a decisive majority sweep for the NDA coalition.", source: "India Today, The Hindu" },
+                { headline: "India expected to miss the target of 5 MMT Green Hydrogen capacity by 2030.", source: "NDTV" },
+                { headline: "India reaffirms stand on climate finance, urging developed nations to fulfill legal obligations at COP30.", source: "NDTV" },
+                { headline: "Swiggy extends 'Crew' travel and lifestyle concierge app service to Mumbai, Bengaluru, and NCR.", source: "NDTV" },
+                { headline: "Veteran actor Dharmendra discharged from hospital; recovering at home.", source: "The Hindu" },
+            ],
+            US: [
+                { headline: "US government shutdown nears end as Senate passes deal, but flight cancellations persist for fifth day.", source: "CBS News, Al Jazeera" },
+                { headline: "US Supreme Court extends pause on Trump administration paying full November SNAP food aid benefits.", source: "The Guardian, India Today" },
+                { headline: "California Governor Newsom criticizes Donald Trump's absence from COP30, calling him 'an invasive species'.", source: "The Guardian, NDTV" },
+                { headline: "Donald Trump says US will bring down 'very high' tariffs on India due to reduced Russian oil purchases.", source: "Indian Express, TOI" },
+                { headline: "Man and daughter killed in Florida plane crash while flying hurricane relief supplies to Jamaica.", source: "Global News" },
+                { headline: "Former US ethics officials removed for inquiring into improper access of mortgage files.", source: "The Guardian" },
+                { headline: "Trump hosts Syrian leader Ahmed Al-Sharaa at the White House in a dramatic turnaround of ties.", source: "Al Jazeera" },
+            ],
+            World: [
+                { headline: "Middle East: Israeli forces kill three in Gaza; tracking ceasefire violations as settlers attack occupied West Bank.", source: "Al Jazeera, The Guardian" },
+                { headline: "Pakistan's Defence Minister declares country in 'state of war' after deadly suicide blast in Islamabad.", source: "Indian Express" },
+                { headline: "Africa: Terrorist turf war leaves about 200 dead in north-eastern Nigeria; TikTok influencer killed in Mali.", source: "The Guardian" },
+                { headline: "Death toll from Hurricane Melissa rises to 45 in Jamaica, with 15 others still missing.", source: "The Hindu" },
+                { headline: "COP30 climate talks begin in Brazil with leaders urging urgency to curb global warming.", source: "CBS News" },
+                { headline: "Turkish military cargo plane with 20 on board crashes near the Azerbaijan-Georgia border.", source: "The Hindu, NDTV" },
+                { headline: "Russia claims to have foiled a Ukrainian-British plot to hijack a MiG warplane armed with a hypersonic missile.", source: "The Times of India" },
+            ]
+        };
+
+        // DOM elements
+        const headlineList = document.getElementById('headline-list');
+        const tabButtons = document.querySelectorAll('.tab-button');
+
+        // Function to render news headlines for the selected region
+        function renderHeadlines(region) {
+            headlineList.innerHTML = ''; // Clear existing content
+            const headlines = newsData[region];
+
+            if (!headlines || headlines.length === 0) {
+                headlineList.innerHTML = `<p class="text-center text-gray-500 py-10">No trending news found for ${region} at this time.</p>`;
+                return;
+            }
+
+            headlines.forEach(item => {
+                const newsItem = document.createElement('div');
+                newsItem.className = 'p-4 border border-gray-100 bg-white rounded-xl shadow-md transition-all duration-200 hover:shadow-lg hover:border-indigo-100';
+                
+                const headlineText = document.createElement('p');
+                headlineText.className = 'text-base font-semibold text-gray-800 leading-relaxed mb-1';
+                headlineText.textContent = item.headline;
+
+                const sourceText = document.createElement('p');
+                sourceText.className = 'text-xs text-indigo-500 font-medium italic';
+                sourceText.textContent = `Source: ${item.source}`;
+
+                newsItem.appendChild(headlineText);
+                newsItem.appendChild(sourceText);
+                headlineList.appendChild(newsItem);
+            });
+        }
+
+        // Function to handle tab clicks
+        function switchRegion(event) {
+            const selectedButton = event.currentTarget;
+            const region = selectedButton.getAttribute('data-region');
+
+            // 1. Update button styles
+            tabButtons.forEach(button => {
+                button.classList.remove('bg-indigo-600', 'text-white', 'shadow-md');
+                button.classList.add('text-gray-600', 'hover:bg-indigo-50', 'hover:text-indigo-600');
+            });
+
+            selectedButton.classList.add('bg-indigo-600', 'text-white', 'shadow-md');
+            selectedButton.classList.remove('text-gray-600', 'hover:bg-indigo-50', 'hover:text-indigo-600');
+
+            // 2. Render content
+            renderHeadlines(region);
+        }
+
+        // Add event listeners to all tab buttons
+        tabButtons.forEach(button => {
+            button.addEventListener('click', switchRegion);
+        });
+
+        // Initialize the app by showing the 'India' headlines by default on load
+        window.onload = function() {
+            // Manually set the initial state for the India button
+            const indiaButton = document.getElementById('tab-india');
+            if (indiaButton) {
+                indiaButton.classList.add('bg-indigo-600', 'text-white', 'shadow-md');
+                indiaButton.classList.remove('text-gray-600', 'hover:bg-indigo-50', 'hover:text-indigo-600');
+            }
+            renderHeadlines('India');
+        };
+
+    </script>
+</body>
+</html>
+
