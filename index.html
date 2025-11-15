@@ -140,7 +140,7 @@
         }
 
         async function fetchNews(countryCode) {
-            let url = `https://newsdata.io/api/1/latest?apikey=${apiKey}&language=en`;
+            let url = `https://newsdata.io/api/1/latest?apikey=${apiKey}&language=en&category=politics,sports,technology`;
 
             if (countryCode !== 'world') {
                 url += `&country=${countryCode}`;
