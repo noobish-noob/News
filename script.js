@@ -13,15 +13,16 @@ let newsAppState = {
 
 // MAPPING: API Country Code (lowercase) to Display Name (Country + Flag)
 const countryMap = {
-    'in': '🇮🇳 India',
-    'us': '🇺🇸 United States',
-    'gb': '🇬🇧 United Kingdom',
     'au': '🇦🇺 Australia',
-    'ca': '🇨🇦 Canada',
-    'de': '🇩🇪 Germany',
-    'jp': '🇯🇵 Japan',
     'br': '🇧🇷 Brazil',
+    'ca': '🇨🇦 Canada',
     'cn': '🇨🇳 China',
+    'de': '🇩🇪 Germany',
+    'fr': '🇫🇷 France', 
+    'gb': '🇬🇧 United Kingdom',
+    'in': '🇮🇳 India',
+    'jp': '🇯🇵 Japan',
+    'us': '🇺🇸 United States',
 };
 
 // ------------------------------------
@@ -37,7 +38,7 @@ let triviaAppState = {
 const TRIVIA_API_URL = "https://opentdb.com/api.php?amount=10&type=multiple"; 
 // ------------------------------------
 
-// --- MEME STATE & CONSTANTS (UPDATED) ---
+// --- MEME STATE & CONSTANTS ---
 const MEME_API_URL = "https://meme-api.com/gimme/"; 
 const MEME_SUBREDDITS = {
     'memes': 'All',
@@ -65,7 +66,7 @@ const memeTitleEl = document.getElementById('meme-title');
 const memeImageEl = document.getElementById('meme-image');
 const nextMemeButton = document.getElementById('next-meme-button');
 const memeErrorEl = document.getElementById('meme-error');
-const memeFilterSelect = document.getElementById('meme-filter-select'); // NEW
+const memeFilterSelect = document.getElementById('meme-filter-select'); 
 
 // TRIVIA ELEMENTS
 const triviaInfo = document.getElementById('trivia-info');
@@ -110,7 +111,7 @@ function displayNewsMessage(message, type = 'info') {
 function updateLoadMoreButton() {
     const remainingCount = newsAppState.currentArticles.length - newsAppState.currentIndex;
     if (remainingCount > 0) {
-        loadMoreButton.textContent = `Load More (${remainingCount} left)`;
+        loadMoreButton.textContent = `Load More`;
         loadMoreContainer.classList.remove('hidden');
     } else {
         loadMoreContainer.classList.add('hidden');
@@ -162,9 +163,13 @@ async function fetchNews(countryCode) {
     }
 }
 
+/**
+ * Renders news headlines to the DOM, including image thumbnails on the left.
+ * @param {boolean} isNewLoad - True if starting a new fetch (clear list), false if loading more.
+ */
 function renderHeadlines(isNewLoad = false) {
     const articles = newsAppState.currentArticles;
-    const countryDisplayName = newsAppState.countryName; // Use stored display name
+    const countryDisplayName = newsAppState.countryName; 
 
     if (isNewLoad) {
         headlineList.innerHTML = ''; 
@@ -181,10 +186,16 @@ function renderHeadlines(isNewLoad = false) {
     const articlesToRender = articles.slice(startIndex, endIndex);
 
     articlesToRender.forEach(item => { 
+        // 1. Create the main link container (set to flex for layout)
         const newsItem = document.createElement('a');
         newsItem.href = item.link || '#';
         newsItem.target = "_blank";
-        newsItem.className = 'block p-4 border border-gray-100 bg-white rounded-xl shadow-md transition-all duration-200 hover:shadow-lg hover:border-indigo-400 cursor-pointer';
+        newsItem.className = 'block flex items-center p-4 border border-gray-100 bg-white rounded-xl shadow-md transition-all duration-200 hover:shadow-lg hover:border-indigo-400 cursor-pointer';
+
+        // 2. Create Text Content container (flex-grow for remaining space)
+        const textContainer = document.createElement('div');
+        // Use min-w-0 to prevent text overflow issues in a flex container
+        textContainer.className = 'flex-grow min-w-0'; 
 
         const headlineText = document.createElement('p');
         headlineText.className = 'text-base font-semibold text-gray-800 leading-relaxed mb-1';
@@ -194,8 +205,23 @@ function renderHeadlines(isNewLoad = false) {
         sourceText.className = 'text-xs text-indigo-500 font-medium italic';
         sourceText.textContent = `Source: ${item.source_id || 'Unknown'}`;
 
-        newsItem.appendChild(headlineText);
-        newsItem.appendChild(sourceText);
+        textContainer.appendChild(headlineText);
+        textContainer.appendChild(sourceText);
+
+        // --- IMAGE FIRST (LEFT) ---
+        if (item.image_url) {
+            const imageEl = document.createElement('img');
+            imageEl.src = item.image_url;
+            imageEl.alt = item.title;
+            // UPDATED: w-32 h-32 = 128x128 pixels (larger thumbnail)
+            imageEl.className = 'w-32 h-32 object-cover rounded-md flex-shrink-0 mr-4'; 
+            newsItem.appendChild(imageEl); 
+        }
+        
+        // --- TEXT CONTAINER SECOND (RIGHT) ---
+        newsItem.appendChild(textContainer);
+
+        // 4. Append to list
         headlineList.appendChild(newsItem);
     });
 
@@ -204,15 +230,26 @@ function renderHeadlines(isNewLoad = false) {
 }
 
 /**
- * Populates the country selection dropdown with options from the countryMap.
+ * Populates the country selection dropdown with options from the countryMap, sorted alphabetically.
  */
 function populateCountrySelector() {
-    for (const code in countryMap) {
+    // 1. Convert the map object into an array of [code, name] pairs
+    let sortedCountries = Object.entries(countryMap);
+    
+    // 2. Sort the array alphabetically by the country name (index 1)
+    sortedCountries.sort(([, nameA], [, nameB]) => nameA.localeCompare(nameB));
+
+    // 3. Clear existing options
+    countrySelect.innerHTML = ''; 
+
+    // 4. Populate the dropdown with sorted options
+    sortedCountries.forEach(([code, name]) => {
         const option = document.createElement('option');
         option.value = code;
-        option.textContent = countryMap[code];
+        option.textContent = name;
         countrySelect.appendChild(option);
-    }
+    });
+    
     // Set default selection to India
     countrySelect.value = newsAppState.countryCode;
 }
@@ -228,7 +265,7 @@ function handleCountryChange() {
 }
 
 
-// === MEME LOGIC (UPDATED) ===
+// === MEME LOGIC ===
 
 /**
  * Populates the meme filter selection dropdown.
@@ -275,10 +312,13 @@ async function fetchRandomMeme() {
              memeImageEl.src = meme.url;
              memeImageEl.classList.remove('hidden');
              memeErrorEl.classList.add('hidden');
+             memeErrorEl.textContent = 'Error loading image, please try again.';
+
         } else {
             memeTitleEl.textContent = "Meme found, but it's not a direct image link. Try again!";
             memeImageEl.classList.add('hidden');
             memeErrorEl.classList.remove('hidden');
+            memeErrorEl.textContent = 'Meme found, but it\'s not a direct image link. Try again!';
         }
         
     } catch (error) {
@@ -472,7 +512,7 @@ countrySelect.addEventListener('change', handleCountryChange);
 
 // 4. Meme Controls
 nextMemeButton.addEventListener('click', fetchRandomMeme);
-memeFilterSelect.addEventListener('change', handleMemeFilterChange); // NEW
+memeFilterSelect.addEventListener('change', handleMemeFilterChange); 
 
 // 5. Trivia Controls
 startQuizButton.addEventListener('click', startQuiz);
