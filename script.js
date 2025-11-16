@@ -377,7 +377,7 @@ function displayQuestion() {
     clearTimeout(triviaAppState.timer);
     triviaOptions.innerHTML = '';
     nextQuestionButton.classList.add('hidden');
-    nextQuestionButton.disabled = true;
+    nextQuestionButton.disabled = false;
 
     if (triviaAppState.currentQuestionIndex >= triviaAppState.questions.length) {
         endQuiz();
@@ -552,3 +552,4 @@ function initializeApp() {
 }
 
 window.onload = initializeApp;
+
