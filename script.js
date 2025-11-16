@@ -38,19 +38,23 @@ let triviaAppState = {
 const TRIVIA_API_URL = "https://opentdb.com/api.php?amount=10&type=multiple"; 
 // ------------------------------------
 
-// --- MEME STATE & CONSTANTS (UPDATED) ---
+// --- MEME STATE & CONSTANTS ---
 const MEME_API_URL = "https://meme-api.com/gimme/"; 
 const MEME_SUBREDDITS = {
     'memes': 'All',
-    // UPDATED: Changed Indian meme subreddit
     'indiameme': '🇮🇳 Indian Memes', 
-    // ADDED: Malayalam meme subreddit
     'MalayalamMemes': '💚 Malayalam Memes' 
 };
 let memeAppState = {
     selectedSubreddit: 'memes' // Default to general memes
 };
 // ------------------------------------
+
+// --- STOCKS CONSTANTS ---
+const ALPHA_VANTAGE_API_KEY = '3N8PE82Y2T5DFULO'; 
+const ALPHA_VANTAGE_URL = 'https://www.alphavantage.co/query?';
+// ------------------------------------
+
 
 // DOM elements
 const headlineList = document.getElementById('headline-list');
@@ -80,6 +84,14 @@ const triviaOptions = document.getElementById('trivia-options');
 const nextQuestionButton = document.getElementById('next-question-button');
 const currentScoreEl = document.getElementById('current-score');
 
+// STOCKS ELEMENTS
+const stocksView = document.getElementById('stocks-view');
+const stockSearchInput = document.getElementById('stock-search-input');
+const stockSearchButton = document.getElementById('stock-search-button');
+const stockResults = document.getElementById('stock-results');
+const stockStatus = document.getElementById('stock-status');
+const stockAutocompleteResults = document.getElementById('stock-autocomplete-results');
+
 
 // === UTILITY FUNCTIONS ===
 
@@ -108,13 +120,29 @@ function displayNewsMessage(message, type = 'info') {
     loadMoreContainer.classList.add('hidden');
 }
 
+/**
+ * Creates a debounced version of a function.
+ * @param {Function} func - The function to debounce.
+ * @param {number} delay - The delay in milliseconds.
+ * @returns {Function} The debounced function.
+ */
+function debounce(func, delay) {
+    let timeoutId;
+    return function(...args) {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+            func.apply(this, args);
+        }, delay);
+    };
+}
+
 
 // === NEWS LOGIC ===
 
 function updateLoadMoreButton() {
     const remainingCount = newsAppState.currentArticles.length - newsAppState.currentIndex;
     if (remainingCount > 0) {
-        loadMoreButton.textContent = `Load More`;
+        loadMoreButton.textContent = `Load More (${remainingCount} left)`;
         loadMoreContainer.classList.remove('hidden');
     } else {
         loadMoreContainer.classList.add('hidden');
@@ -313,9 +341,6 @@ async function fetchRandomMeme() {
 
         const meme = await response.json();
         
-        // Note: The meme-api uses 'subreddit' field from the response object,
-        // but the request is made using the subreddit from the dropdown.
-        
         if (meme && meme.url && meme.url.match(/\.(jpeg|jpg|gif|png)$/i)) {
              memeTitleEl.textContent = meme.title || "Random Meme";
              memeImageEl.src = meme.url;
@@ -377,7 +402,7 @@ function displayQuestion() {
     clearTimeout(triviaAppState.timer);
     triviaOptions.innerHTML = '';
     nextQuestionButton.classList.add('hidden');
-    nextQuestionButton.disabled = false;
+    nextQuestionButton.disabled = true;
 
     if (triviaAppState.currentQuestionIndex >= triviaAppState.questions.length) {
         endQuiz();
@@ -435,8 +460,11 @@ function handleAnswer(clickedButton, selectedAnswer, correctAnswer) {
         });
     }
 
-    // 4. Show the next question button with a delay
+    // 4. Show the next question button
     nextQuestionButton.classList.remove('hidden');
+    // Enable the button so the user can click it immediately
+    nextQuestionButton.disabled = false; 
+
     let countdown = 5;
     nextQuestionButton.textContent = `Next Question (${countdown}s)`;
 
@@ -469,6 +497,201 @@ function endQuiz() {
 }
 
 
+// === STOCKS LOGIC ===
+
+/**
+ * Determines the currency symbol based on the stock's region.
+ * @param {string} region - The region string from Alpha Vantage (e.g., 'India/Bombay Stock Exchange').
+ * @returns {string} The currency symbol.
+ */
+function getCurrencySymbol(region) {
+    // Check for common Indian exchange names
+    if (region && (region.includes('India') || region.includes('BSE') || region.includes('NSE'))) {
+        return '₹'; // Indian Rupee
+    }
+    return '$'; // Default to US Dollar
+}
+
+/**
+ * Searches for stock ticker symbols based on user input for autocomplete.
+ * @param {string} keywords - The company name or symbol fragment.
+ */
+async function fetchAutocompleteSuggestions(keywords) {
+    stockAutocompleteResults.innerHTML = '';
+    
+    if (keywords.length < 2) {
+        stockAutocompleteResults.classList.add('hidden');
+        return;
+    }
+
+    const url = `${ALPHA_VANTAGE_URL}function=SYMBOL_SEARCH&keywords=${keywords}&apikey=${ALPHA_VANTAGE_API_KEY}`;
+    
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data["Error Message"] || !data.bestMatches || data.bestMatches.length === 0) {
+            stockAutocompleteResults.classList.add('hidden');
+            return;
+        }
+
+        data.bestMatches.slice(0, 5).forEach(match => {
+            const symbol = match['1. symbol'];
+            const name = match['2. name'];
+            const region = match['4. region'];
+            
+            const item = document.createElement('div');
+            item.className = 'autocomplete-item';
+            item.innerHTML = `<span class="font-bold text-indigo-600">${symbol}</span> - ${name} (${region})`;
+            
+            item.addEventListener('click', () => {
+                // 1. Set the input value
+                stockSearchInput.value = symbol;
+                // 2. Clear and hide suggestions
+                stockAutocompleteResults.innerHTML = '';
+                stockAutocompleteResults.classList.add('hidden');
+                // 3. Immediately fetch the stock quote, passing the region
+                fetchStockQuote(symbol, region);
+            });
+            
+            stockAutocompleteResults.appendChild(item);
+        });
+
+        stockAutocompleteResults.classList.remove('hidden');
+
+    } catch (error) {
+        console.error("Alpha Vantage Autocomplete failed:", error);
+        stockAutocompleteResults.innerHTML = '<div class="p-2 text-red-500">Error fetching suggestions.</div>';
+        stockAutocompleteResults.classList.remove('hidden');
+    }
+}
+
+/**
+ * Fetches the latest global quote for a given stock ticker and renders the results.
+ * @param {string} ticker - The stock ticker symbol (e.g., 'AAPL').
+ * @param {string} region - The stock's region/exchange (e.g., 'India/Bombay Stock Exchange').
+ */
+async function fetchStockQuote(ticker, region = 'Unknown') {
+    // Hide autocomplete results
+    stockAutocompleteResults.classList.add('hidden');
+    stockAutocompleteResults.innerHTML = '';
+
+    // Set loading status
+    stockStatus.textContent = `Fetching latest quote for ${ticker}...`;
+    stockResults.innerHTML = '';
+    stockResults.appendChild(stockStatus);
+
+    // Get currency symbol based on the region provided
+    const currencySymbol = getCurrencySymbol(region); 
+
+    // FUNCTION: GLOBAL_QUOTE
+    const url = `${ALPHA_VANTAGE_URL}function=GLOBAL_QUOTE&symbol=${ticker}&apikey=${ALPHA_VANTAGE_API_KEY}`;
+
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+
+        // Check for error messages from API
+        if (data["Error Message"]) {
+            stockStatus.textContent = `API Error: ${data["Error Message"]}. Check console for details.`;
+            return;
+        }
+        
+        const quote = data["Global Quote"];
+
+        if (quote && quote["05. price"] && quote["05. price"] !== "0.0000") {
+            const symbol = quote["01. symbol"];
+            const price = parseFloat(quote["05. price"]).toFixed(2);
+            const open = parseFloat(quote["02. open"]).toFixed(2);
+            const high = parseFloat(quote["03. high"]).toFixed(2);
+            const low = parseFloat(quote["04. low"]).toFixed(2);
+            const change = parseFloat(quote["09. change"]);
+            const changePercent = parseFloat(quote["10. change percent"].replace('%', '')).toFixed(2);
+            
+            const changeSign = change >= 0 ? 'text-green-600' : 'text-red-600';
+            const changeArrow = change >= 0 ? '▲' : '▼';
+            
+            // Clear status and render results
+            stockResults.innerHTML = ''; 
+
+            const resultHtml = `
+                <div class="text-left w-full space-y-3">
+                    <h3 class="text-3xl font-extrabold text-gray-900">${symbol} <span class="text-sm font-semibold text-gray-500">(${region})</span></h3>
+                    <p class="text-xl font-bold text-gray-700">Latest Price: <span class="text-indigo-600">${currencySymbol}${price}</span></p>
+                    
+                    <p class="text-xl font-bold ${changeSign}">
+                        ${changeArrow} ${change.toFixed(2)} (${changePercent}%)
+                    </p>
+                    
+                    <div class="grid grid-cols-2 gap-4 text-sm pt-3 border-t border-gray-200">
+                        <p><strong>Open:</strong> ${currencySymbol}${open}</p>
+                        <p><strong>High:</strong> ${currencySymbol}${high}</p>
+                        <p><strong>Low:</strong> ${currencySymbol}${low}</p>
+                        <p><strong>Volume:</strong> ${quote["06. volume"]}</p>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-3">Last Refreshed: ${quote["07. latest trading day"]}</p>
+                </div>
+            `;
+            stockResults.innerHTML = resultHtml;
+
+        } else {
+            stockStatus.textContent = `Could not retrieve live quote for ticker: ${ticker}. Please verify the symbol.`;
+        }
+    } catch (error) {
+        console.error("Alpha Vantage Global Quote failed:", error);
+        stockStatus.textContent = "Network error fetching stock quote.";
+    }
+}
+
+/**
+ * Main handler for the stock search button click.
+ * This now always uses SYMBOL_SEARCH first to find the region and exact ticker.
+ */
+async function handleStockSearch() {
+    const query = stockSearchInput.value.trim();
+    if (!query) {
+        stockStatus.textContent = "Please enter a company name or ticker symbol.";
+        stockResults.innerHTML = '';
+        stockResults.appendChild(stockStatus);
+        return;
+    }
+
+    // 1. Search for the ticker symbol and its region/exchange info
+    const symbolSearchUrl = `${ALPHA_VANTAGE_URL}function=SYMBOL_SEARCH&keywords=${query}&apikey=${ALPHA_VANTAGE_API_KEY}`;
+    
+    stockStatus.textContent = `Searching for ticker and exchange for "${query}"...`;
+    stockResults.innerHTML = '';
+    stockResults.appendChild(stockStatus);
+
+    try {
+        const response = await fetch(symbolSearchUrl);
+        const data = await response.json();
+
+        if (data.bestMatches && data.bestMatches.length > 0) {
+            const bestMatch = data.bestMatches[0];
+            const ticker = bestMatch['1. symbol'];
+            const region = bestMatch['4. region'];
+            
+            // 2. Update the input field with the precise ticker
+            stockSearchInput.value = ticker; 
+            
+            // 3. Fetch the quote using the found ticker and region
+            await fetchStockQuote(ticker, region); 
+        } else {
+            stockStatus.textContent = `No stock symbol found for "${query}". Please try a different query.`;
+        }
+
+    } catch (error) {
+        console.error("Alpha Vantage Search failed in handleStockSearch:", error);
+        stockStatus.textContent = "Network error during stock symbol lookup.";
+    }
+}
+
+
+// Debounced version of the autocomplete fetch function
+const debouncedFetchSuggestions = debounce(fetchAutocompleteSuggestions, 300);
+
+
 // === EVENT LISTENERS & INITIALIZATION ===
 
 // 1. Tab switching
@@ -488,6 +711,7 @@ function switchRegion(event) {
     newsView.classList.add('hidden');
     memesView.classList.add('hidden');
     triviaView.classList.add('hidden');
+    stocksView.classList.add('hidden'); 
 
     // Show the selected view and fetch data
     if (contentArea === 'news') {
@@ -498,7 +722,16 @@ function switchRegion(event) {
         } else {
             updateLoadMoreButton();
         }
-    } else if (contentArea === 'memes') {
+    } else if (contentArea === 'stocks') {
+        stocksView.classList.remove('hidden');
+        // Reset stock status message
+        stockStatus.textContent = "Enter a company name or ticker symbol above to find its stock price.";
+        stockResults.innerHTML = '';
+        stockResults.appendChild(stockStatus); 
+        // Hide autocomplete when switching back
+        stockAutocompleteResults.classList.add('hidden');
+    }
+    else if (contentArea === 'memes') {
         memesView.classList.remove('hidden');
         // Fetch a meme using the currently selected filter
         fetchRandomMeme(); 
@@ -530,7 +763,23 @@ nextQuestionButton.addEventListener('click', () => {
     nextQuestion();
 });
 
-// 6. Initial load
+// 6. Stocks Controls (Search Button)
+stockSearchButton.addEventListener('click', handleStockSearch);
+
+// 7. Stocks Controls (Autocomplete Input)
+stockSearchInput.addEventListener('input', (event) => {
+    const keywords = event.target.value.trim();
+    debouncedFetchSuggestions(keywords);
+});
+
+// 8. Stocks Controls (Outside Click to Hide Autocomplete)
+document.addEventListener('click', (event) => {
+    if (!stockAutocompleteResults.contains(event.target) && event.target !== stockSearchInput) {
+        stockAutocompleteResults.classList.add('hidden');
+    }
+});
+
+// 9. Initial load
 tabButtons.forEach(button => {
     button.addEventListener('click', switchRegion);
 });
@@ -552,4 +801,3 @@ function initializeApp() {
 }
 
 window.onload = initializeApp;
-
