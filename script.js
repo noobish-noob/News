@@ -38,11 +38,14 @@ let triviaAppState = {
 const TRIVIA_API_URL = "https://opentdb.com/api.php?amount=10&type=multiple"; 
 // ------------------------------------
 
-// --- MEME STATE & CONSTANTS ---
+// --- MEME STATE & CONSTANTS (UPDATED) ---
 const MEME_API_URL = "https://meme-api.com/gimme/"; 
 const MEME_SUBREDDITS = {
     'memes': 'All',
-    'IndianMeyMeys': '🇮🇳 Indian'
+    // UPDATED: Changed Indian meme subreddit
+    'indiameme': '🇮🇳 Indian Memes', 
+    // ADDED: Malayalam meme subreddit
+    'MalayalamMemes': '💚 Malayalam Memes' 
 };
 let memeAppState = {
     selectedSubreddit: 'memes' // Default to general memes
@@ -213,7 +216,7 @@ function renderHeadlines(isNewLoad = false) {
             const imageEl = document.createElement('img');
             imageEl.src = item.image_url;
             imageEl.alt = item.title;
-            // UPDATED: w-32 h-32 = 128x128 pixels (larger thumbnail)
+            // w-32 h-32 = 128x128 pixels (larger thumbnail)
             imageEl.className = 'w-32 h-32 object-cover rounded-md flex-shrink-0 mr-4'; 
             newsItem.appendChild(imageEl); 
         }
@@ -271,6 +274,9 @@ function handleCountryChange() {
  * Populates the meme filter selection dropdown.
  */
 function populateMemeSelector() {
+    // Clear existing options
+    memeFilterSelect.innerHTML = ''; 
+
     for (const subreddit in MEME_SUBREDDITS) {
         const option = document.createElement('option');
         option.value = subreddit;
@@ -306,6 +312,9 @@ async function fetchRandomMeme() {
         }
 
         const meme = await response.json();
+        
+        // Note: The meme-api uses 'subreddit' field from the response object,
+        // but the request is made using the subreddit from the dropdown.
         
         if (meme && meme.url && meme.url.match(/\.(jpeg|jpg|gif|png)$/i)) {
              memeTitleEl.textContent = meme.title || "Random Meme";
