@@ -51,6 +51,7 @@ let memeAppState = {
 // ------------------------------------
 
 // --- STOCKS CONSTANTS ---
+
 const ALPHA_VANTAGE_API_KEY = '3N8PE82Y2T5DFULO'; 
 const ALPHA_VANTAGE_URL = 'https://www.alphavantage.co/query?';
 // ------------------------------------
@@ -85,13 +86,19 @@ const nextQuestionButton = document.getElementById('next-question-button');
 const currentScoreEl = document.getElementById('current-score');
 
 // STOCKS ELEMENTS
-const stocksView = document.getElementById('stocks-view');
+const stockView = document.getElementById('stock-view');
 const stockSearchInput = document.getElementById('stock-search-input');
 const stockSearchButton = document.getElementById('stock-search-button');
-const stockResults = document.getElementById('stock-results');
-const stockStatus = document.getElementById('stock-status');
 const stockAutocompleteResults = document.getElementById('stock-autocomplete-results');
+const stockInfoCard = document.getElementById('stock-info-card');
+const stockChartArea = document.getElementById('stock-chart-area'); // NEW
+const stockPriceChartCanvas = document.getElementById('stock-price-chart'); // NEW
 
+// Global variable to hold the Chart.js instance
+let stockChartInstance = null; // NEW
+
+// Global variable to hold the Chart.js instance
+let stockChartInstance = null; // NEW
 
 // === UTILITY FUNCTIONS ===
 
@@ -512,6 +519,101 @@ function endQuiz() {
     `;
 }
 
+// === STOCK CHART LOGIC ===
+
+/**
+ * Fetches daily time series data for a stock and renders a Chart.js line graph.
+ * @param {string} symbol - The stock ticker symbol (e.g., 'IBM').
+ */
+async function fetchAndDisplayStockChart(symbol) {
+    stockChartArea.classList.remove('hidden');
+    
+    // Clear the previous chart container content and show loading text
+    const chartContainer = stockChartArea.querySelector('div');
+    if (chartContainer) {
+        chartContainer.innerHTML = '<p class="text-center text-gray-500">Loading chart data...</p><canvas id="stock-price-chart"></canvas>';
+    }
+
+    const chartCanvas = document.getElementById('stock-price-chart');
+    stockChartArea.querySelector('h3').textContent = `Price History for ${symbol}`;
+    
+    // outputsize=compact gives the last 100 data points
+    const apiUrl = `https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${symbol}&outputsize=compact&apikey=${ALPHA_VANTAGE_API_KEY}`;
+    
+    try {
+        const response = await fetch(apiUrl);
+        const data = await response.json();
+        
+        // Clear loading text
+        if (chartContainer) chartContainer.querySelector('p')?.remove();
+
+        if (data['Error Message'] || !data['Time Series (Daily)']) {
+            stockChartArea.innerHTML += `<p class="text-red-500 text-center">Could not load chart data. Check symbol or API key.</p>`;
+            return;
+        }
+
+        const timeSeries = data['Time Series (Daily)'];
+        
+        // Extract the last 100 days of data and reverse it for chronological order
+        const dates = Object.keys(timeSeries).slice(0, 100).reverse(); 
+        const prices = dates.map(date => parseFloat(timeSeries[date]['4. close']));
+
+        // Destroy existing chart instance if it exists before creating a new one
+        if (stockChartInstance) {
+            stockChartInstance.destroy();
+        }
+
+        // Create new chart instance
+        stockChartInstance = new Chart(chartCanvas, {
+            type: 'line',
+            data: {
+                labels: dates,
+                datasets: [{
+                    label: `${symbol} Closing Price`,
+                    data: prices,
+                    borderColor: '#4f46e5', // indigo-600
+                    backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                    borderWidth: 2,
+                    pointRadius: 0, // Hide points for a cleaner look
+                    tension: 0.1, // Smooth the line
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false, 
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    title: {
+                        display: false
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            autoSkip: true,
+                            maxTicksLimit: 10 // Prevent cluttering the x-axis
+                        }
+                    },
+                    y: {
+                        beginAtZero: false,
+                        title: {
+                            display: true,
+                            text: 'Price (USD)'
+                        }
+                    }
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error("Error fetching stock chart data:", error);
+        if (chartContainer) chartContainer.querySelector('p')?.remove();
+        stockChartArea.innerHTML += `<p class="text-red-500 text-center">Failed to fetch stock chart data due to a network error.</p>`;
+    }
+}    
 
 // === STOCKS LOGIC ===
 
@@ -664,45 +766,65 @@ async function fetchStockQuote(ticker, region = 'Unknown') {
  * This now always uses SYMBOL_SEARCH first to find the region and exact ticker.
  */
 async function handleStockSearch() {
-    const query = stockSearchInput.value.trim();
-    if (!query) {
-        stockStatus.textContent = "Please enter a company name or ticker symbol.";
-        stockResults.innerHTML = '';
-        stockResults.appendChild(stockStatus);
+    const symbol = stockSearchInput.value.trim().toUpperCase();
+    if (!symbol) {
+        stockInfoCard.innerHTML = `<p class="text-red-500">Please enter a stock symbol.</p>`;
+        // Hide/clear the chart area
+        if (stockChartInstance) stockChartInstance.destroy();
+        stockChartArea.classList.add('hidden');
         return;
     }
 
-    // 1. Search for the ticker symbol and its region/exchange info
-    const symbolSearchUrl = `${ALPHA_VANTAGE_URL}function=SYMBOL_SEARCH&keywords=${query}&apikey=${ALPHA_VANTAGE_API_KEY}`;
+    // --- CHART LOADING SETUP (NEW) ---
+    stockChartArea.classList.remove('hidden');
+    stockChartArea.querySelector('h3').textContent = `Price History for ${symbol}`;
+    const chartContainer = stockChartArea.querySelector('div');
+    if (chartContainer) chartContainer.innerHTML = '<p class="text-center text-gray-500">Loading chart data...</p>';
+    // ------------------------------------
     
-    stockStatus.textContent = `Searching for ticker and exchange for "${query}"...`;
-    stockResults.innerHTML = '';
-    stockResults.appendChild(stockStatus);
+    stockInfoCard.innerHTML = `<p class="text-gray-500">Fetching stock details...</p>`; // Loading message for quote
+    stockInfoCard.classList.remove('hidden');
 
+    // Fetch the current stock quote
+    const quoteUrl = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${ALPHA_VANTAGE_API_KEY}`;
+    
     try {
-        const response = await fetch(symbolSearchUrl);
+        const response = await fetch(quoteUrl);
         const data = await response.json();
-
-        if (data.bestMatches && data.bestMatches.length > 0) {
-            const bestMatch = data.bestMatches[0];
-            const ticker = bestMatch['1. symbol'];
-            const region = bestMatch['4. region'];
+        const quote = data['Global Quote'];
+        
+        if (quote && quote['01. symbol']) {
+            // Placeholder for existing logic to display quote details
+            stockInfoCard.innerHTML = `
+                <h3 class="text-xl font-bold text-gray-800 mb-2">${quote['01. symbol']}</h3>
+                <p class="text-3xl font-bold text-indigo-600">$${parseFloat(quote['05. price']).toFixed(2)}</p>
+                <p class="text-sm ${parseFloat(quote['09. change']) >= 0 ? 'text-green-500' : 'text-red-500'}">
+                    Change: ${parseFloat(quote['09. change']).toFixed(2)} (${parseFloat(quote['10. change percent']).toFixed(2)})
+                </p>
+                <p class="text-xs text-gray-500 mt-2">Volume: ${parseInt(quote['06. volume']).toLocaleString()}</p>
+            `;
             
-            // 2. Update the input field with the precise ticker
-            stockSearchInput.value = ticker; 
+            // === CALL THE NEW CHART FUNCTION (INTEGRATION POINT) ===
+            await fetchAndDisplayStockChart(symbol);
+            // ===================================
             
-            // 3. Fetch the quote using the found ticker and region
-            await fetchStockQuote(ticker, region); 
         } else {
-            stockStatus.textContent = `No stock symbol found for "${query}". Please try a different query.`;
+            stockInfoCard.innerHTML = `<p class="text-red-500">Stock symbol not found or API error for ${symbol}.</p>`;
+            
+            // Clear the chart area on failure
+            if (stockChartInstance) stockChartInstance.destroy();
+            stockChartArea.classList.add('hidden');
         }
 
     } catch (error) {
-        console.error("Alpha Vantage Search failed in handleStockSearch:", error);
-        stockStatus.textContent = "Network error during stock symbol lookup.";
+        console.error("Stock fetch failed:", error);
+        stockInfoCard.innerHTML = `<p class="text-red-500">Network error. Could not fetch stock data.</p>`;
+        
+        // Clear the chart area on network failure
+        if (stockChartInstance) stockChartInstance.destroy();
+        stockChartArea.classList.add('hidden');
     }
 }
-
 
 // Debounced version of the autocomplete fetch function
 const debouncedFetchSuggestions = debounce(fetchAutocompleteSuggestions, 300);
@@ -817,3 +939,4 @@ function initializeApp() {
 }
 
 window.onload = initializeApp;
+
