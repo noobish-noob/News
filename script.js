@@ -867,18 +867,16 @@ function initializeApp() {
     // Populate selectors
     populateCountrySelector();
     populateMemeSelector(); 
+    populateTriviaCategorySelector(); // New function call
     
-    // Set the default active style for the News tab
-    const newsButton = document.getElementById('tab-news');
-    if (newsButton) {
-        newsButton.classList.add('bg-indigo-600', 'text-white', 'shadow-md');
-        newsButton.classList.remove('text-gray-600', 'hover:bg-indigo-50', 'hover:text-indigo-600');
-    }
+    // ... existing style setting for news button
     
     // Load news for the default country ('in')
     fetchNews(newsAppState.countryCode);
 }
+// ... existing window.onload
 
 window.onload = initializeApp;
+
 
 
